@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FirebaseAuthController;
+use App\Http\Controllers\StripeController;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 // Public routes
@@ -12,6 +13,11 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/firebase-login', [FirebaseAuthController::class, 'login']);
 Route::get('/config/recaptcha', [\App\Http\Controllers\ConfigController::class, 'getReCaptchaSiteKey']);
 Route::post('/verify-recaptcha', [\App\Http\Controllers\ConfigController::class, 'verifyReCaptcha']);
+
+// Stripe payment routes
+Route::post('/stripe/create-checkout', [StripeController::class, 'createCheckoutSession']);
+Route::get('/stripe/verify-session', [StripeController::class, 'verifySession']);
+Route::post('/stripe/webhook', [StripeController::class, 'handleWebhook']);
 
 // Existing OpenRouter routes
 Route::post('/openrouter/generate-ea', [App\Http\Controllers\OpenRouterController::class, 'generateEA']);
