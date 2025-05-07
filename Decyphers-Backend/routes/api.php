@@ -10,6 +10,8 @@ use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/firebase-login', [FirebaseAuthController::class, 'login']);
+Route::get('/config/recaptcha', [\App\Http\Controllers\ConfigController::class, 'getReCaptchaSiteKey']);
+Route::post('/verify-recaptcha', [\App\Http\Controllers\ConfigController::class, 'verifyReCaptcha']);
 
 // Existing OpenRouter routes
 Route::post('/openrouter/generate-ea', [App\Http\Controllers\OpenRouterController::class, 'generateEA']);
