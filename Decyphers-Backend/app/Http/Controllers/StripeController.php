@@ -17,8 +17,10 @@ class StripeController extends Controller
         '7000_tokens' => 7000,
         '40000_tokens' => 40000,
         '100000_tokens' => 100000,
-        // Add the specific price ID
-        'price_1R4cZ22NO6PNHfEnEhmEzX2y' => 7000,
+        // Specific price IDs
+        'price_1R4cZ22NO6PNHfEnEhmEzX2y' => 7000,   // 7,000 tokens
+        'price_1R4cZj2NO6PNHfEn4XiPU4tI' => 40000,  // 40,000 tokens
+        'price_1R4caA2NO6PNHfEncTFmFBd4' => 100000  // 100,000 tokens
     ];
 
     protected $firebaseService;
