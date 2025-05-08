@@ -79,15 +79,28 @@ class FirebaseService
             
             // Add to purchase history if session ID is provided
             if (isset($purchaseData['sessionId'])) {
-                $updates['purchases/' . $purchaseData['sessionId']] = [
-                    'tokens' => $tokensToAdd,
-                    'amount' => $purchaseData['amount'] ?? 0,
-                    'date' => date('c'),
-                    'status' => $purchaseData['status'] ?? 'completed',
-                    'priceId' => $purchaseData['priceId'] ?? null,
-                    'customerEmail' => $purchaseData['customerEmail'] ?? null,
-                    'currency' => $purchaseData['currency'] ?? 'usd'
-                ];
+                // Check if this session ID already exists in the user's purchases
+                $existingPurchase = null;
+                if (isset($userData['purchases']) && isset($userData['purchases'][$purchaseData['sessionId']])) {
+                    $existingPurchase = $userData['purchases'][$purchaseData['sessionId']];
+                    Log::info('Found existing purchase with session ID: ' . $purchaseData['sessionId']);
+                }
+                
+                // Only add the purchase if it doesn't exist or if we're updating its status
+                if (!$existingPurchase || 
+                    ($existingPurchase['status'] === 'pending' && $purchaseData['status'] === 'paid')) {
+                    
+                    $updates['purchases/' . $purchaseData['sessionId']] = [
+                        'tokens' => $tokensToAdd,
+                        'amount' => $purchaseData['amount'] ?? 0,
+                        'date' => date('c'),
+                        'status' => $purchaseData['status'] ?? 'completed',
+                        'priceId' => $purchaseData['priceId'] ?? null,
+                        'customerEmail' => $purchaseData['customerEmail'] ?? null,
+                        'currency' => $purchaseData['currency'] ?? 'usd',
+                        'type' => $purchaseData['type'] ?? 'purchase' // Default to 'purchase' if not specified
+                    ];
+                }
             }
             
             // Update Firebase

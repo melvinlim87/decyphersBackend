@@ -444,7 +444,8 @@ class StripeController extends Controller
                     'amount' => ($price->unit_amount ?? 0) / 100, // Convert to dollars
                     'status' => 'pending', // Status is pending until payment is completed
                     'customerEmail' => $customerInfo['email'] ?? null,
-                    'currency' => $price->currency ?? 'usd'
+                    'currency' => $price->currency ?? 'usd',
+                    'type' => 'purchase' // Explicitly set the transaction type
                 ];
                 
                 // Update user tokens in Firebase
