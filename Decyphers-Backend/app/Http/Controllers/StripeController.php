@@ -17,6 +17,8 @@ class StripeController extends Controller
         '7000_tokens' => 7000,
         '40000_tokens' => 40000,
         '100000_tokens' => 100000,
+        // Add the specific price ID
+        'price_1R4cZ22NO6PNHfEnEhmEzX2y' => 7000,
     ];
 
     protected $firebaseService;
@@ -303,26 +305,57 @@ class StripeController extends Controller
                 ], 400);
             }
 
-            // Determine which token package was purchased
-            $packageKey = null;
-            foreach (self::TOKEN_AMOUNTS as $key => $amount) {
-                if (strpos($priceId, $key) !== false) {
-                    $packageKey = $key;
-                    break;
+            // Direct lookup by price ID first
+            $tokensToAdd = self::TOKEN_AMOUNTS[$priceId] ?? 0;
+            Log::info('Direct price ID lookup result: ' . $tokensToAdd . ' for price ID: ' . $priceId);
+            
+            // If direct lookup fails, try partial matching
+            if ($tokensToAdd === 0) {
+                Log::info('Attempting partial matching for price ID: ' . $priceId);
+                foreach (self::TOKEN_AMOUNTS as $key => $amount) {
+                    Log::info('Checking if price ID ' . $priceId . ' contains ' . $key);
+                    if (strpos($priceId, $key) !== false) {
+                        $tokensToAdd = $amount;
+                        Log::info('Found match: ' . $key . ' with amount: ' . $amount);
+                        break;
+                    }
                 }
             }
             
-            $tokensToAdd = self::TOKEN_AMOUNTS[$packageKey] ?? 0;
-            
+            // If still no match, try to get token amount from price metadata
             if ($tokensToAdd === 0) {
-                // Try to get token amount from price metadata
-                $tokensToAdd = $price->metadata->tokens ?? 0;
+                Log::info('Checking price metadata for tokens');
+                if (isset($price->metadata) && isset($price->metadata->tokens)) {
+                    $tokensToAdd = $price->metadata->tokens;
+                    Log::info('Found tokens in metadata: ' . $tokensToAdd);
+                } else {
+                    Log::info('No tokens found in metadata');
+                }
+            }
+            
+            // Fallback: Assign a default value based on price amount
+            if ($tokensToAdd === 0) {
+                $priceAmount = ($price->unit_amount ?? 0) / 100;
+                Log::info('Using fallback based on price amount: $' . $priceAmount);
+                
+                // Simple fallback logic - adjust as needed
+                if ($priceAmount <= 10) {
+                    $tokensToAdd = 7000;
+                } else if ($priceAmount <= 50) {
+                    $tokensToAdd = 40000;
+                } else {
+                    $tokensToAdd = 100000;
+                }
+                
+                Log::info('Assigned fallback tokens: ' . $tokensToAdd);
             }
             
             if ($tokensToAdd === 0) {
+                Log::error('Failed to determine token amount for price ID: ' . $priceId);
                 return response()->json([
                     'success' => false,
-                    'error' => 'Could not determine token amount for this price'
+                    'error' => 'Could not determine token amount for this price',
+                    'priceId' => $priceId
                 ], 400);
             }
 
