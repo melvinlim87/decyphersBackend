@@ -361,22 +361,99 @@ class StripeController extends Controller
                 ], 400);
             }
 
-            // Create a mock purchase data for Firebase
-            $purchaseData = [
-                'sessionId' => 'direct_purchase_' . time(),
-                'priceId' => $priceId,
-                'amount' => ($price->unit_amount ?? 0) / 100, // Convert to dollars
-                'status' => 'paid',
-                'customerEmail' => $customerInfo['email'] ?? null,
-                'currency' => $price->currency ?? 'usd'
-            ];
-            
-            // Update user tokens in Firebase
+            // Create or retrieve customer in Stripe
+            $customerId = null;
             try {
+                if (isset($customerInfo['email'])) {
+                    // Search for existing customers with this email
+                    $customers = \Stripe\Customer::all([
+                        'email' => $customerInfo['email'],
+                        'limit' => 1
+                    ]);
+                    
+                    if (count($customers->data) > 0) {
+                        // Use existing customer
+                        $customerId = $customers->data[0]->id;
+                        Log::info('Using existing customer: ' . $customerId);
+                    } else {
+                        // Create new customer
+                        $customer = \Stripe\Customer::create([
+                            'email' => $customerInfo['email'],
+                            'name' => $customerInfo['name'] ?? null,
+                            'metadata' => [
+                                'userId' => $userId
+                            ]
+                        ]);
+                        $customerId = $customer->id;
+                        Log::info('Created new customer: ' . $customerId);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error creating/finding customer: ' . $e->getMessage());
+                // Continue without customer ID
+            }
+            
+            // Create a checkout session instead of direct payment
+            try {
+                $sessionConfig = [
+                    'mode' => 'payment',
+                    'payment_method_types' => ['card'],
+                    'line_items' => [
+                        [
+                            'price' => $priceId,
+                            'quantity' => 1,
+                        ],
+                    ],
+                    'success_url' => env('FRONTEND_URL', 'https://decyphers.com') . '/profile?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => env('FRONTEND_URL', 'https://decyphers.com') . '/profile',
+                    'metadata' => [
+                        'userId' => $userId,
+                        'customer_name' => $customerInfo['name'] ?? '',
+                        'direct_verification' => 'true'
+                    ],
+                    'payment_intent_data' => [
+                        'metadata' => [
+                            'userId' => $userId,
+                            'price_id' => $priceId,
+                            'tokens' => $tokensToAdd,
+                            'session_id' => '{CHECKOUT_SESSION_ID}',
+                            'customer_name' => $customerInfo['name'] ?? '',
+                            'customer_email' => $customerInfo['email'] ?? '',
+                        ]
+                    ]
+                ];
+                
+                // Add customer-related parameters based on what we have
+                if ($customerId) {
+                    // If we have a customer ID, use it
+                    $sessionConfig['customer'] = $customerId;
+                } else if (isset($customerInfo['email'])) {
+                    // If we have an email but no customer ID, let Stripe create a customer
+                    $sessionConfig['customer_email'] = $customerInfo['email'];
+                    $sessionConfig['customer_creation'] = 'always';
+                }
+                
+                $session = Session::create($sessionConfig);
+                Log::info('Created checkout session: ' . $session->id);
+                
+                // For now, we'll still update tokens in Firebase
+                // In production, you might want to wait for the webhook or session verification
+                $purchaseData = [
+                    'sessionId' => $session->id,
+                    'priceId' => $priceId,
+                    'amount' => ($price->unit_amount ?? 0) / 100, // Convert to dollars
+                    'status' => 'pending', // Status is pending until payment is completed
+                    'customerEmail' => $customerInfo['email'] ?? null,
+                    'currency' => $price->currency ?? 'usd'
+                ];
+                
+                // Update user tokens in Firebase
                 $result = $this->firebaseService->updateUserTokens($userId, $tokensToAdd, $purchaseData);
                 
                 return response()->json([
                     'success' => true,
+                    'sessionId' => $session->id,
+                    'sessionUrl' => $session->url, // URL to redirect the user to complete payment
                     'tokensAdded' => $tokensToAdd,
                     'previousTotal' => $result['previousTokens'],
                     'newTotal' => $result['newTotal']
