@@ -268,6 +268,107 @@ class StripeController extends Controller
     }
 
     /**
+     * Verify a Stripe checkout session via POST request
+     */
+    public function verifySessionPost(Request $request)
+    {
+        try {
+            // Validate request
+            $validated = $request->validate([
+                'priceId' => 'required|string',
+                'userId' => 'required|string',
+                'customerInfo.name' => 'nullable|string',
+                'customerInfo.email' => 'nullable|email',
+            ]);
+
+            $priceId = $validated['priceId'];
+            $userId = $validated['userId'];
+            $customerInfo = $validated['customerInfo'] ?? [];
+
+            // Verify price ID exists in Stripe
+            try {
+                $price = \Stripe\Price::retrieve($priceId);
+                
+                if (!$price->active) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Price is not active'
+                    ], 400);
+                }
+            } catch (ApiErrorException $e) {
+                Log::error('Error retrieving price from Stripe: ' . $e->getMessage());
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Invalid or inactive price ID'
+                ], 400);
+            }
+
+            // Determine which token package was purchased
+            $packageKey = null;
+            foreach (self::TOKEN_AMOUNTS as $key => $amount) {
+                if (strpos($priceId, $key) !== false) {
+                    $packageKey = $key;
+                    break;
+                }
+            }
+            
+            $tokensToAdd = self::TOKEN_AMOUNTS[$packageKey] ?? 0;
+            
+            if ($tokensToAdd === 0) {
+                // Try to get token amount from price metadata
+                $tokensToAdd = $price->metadata->tokens ?? 0;
+            }
+            
+            if ($tokensToAdd === 0) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Could not determine token amount for this price'
+                ], 400);
+            }
+
+            // Create a mock purchase data for Firebase
+            $purchaseData = [
+                'sessionId' => 'direct_purchase_' . time(),
+                'priceId' => $priceId,
+                'amount' => ($price->unit_amount ?? 0) / 100, // Convert to dollars
+                'status' => 'paid',
+                'customerEmail' => $customerInfo['email'] ?? null,
+                'currency' => $price->currency ?? 'usd'
+            ];
+            
+            // Update user tokens in Firebase
+            try {
+                $result = $this->firebaseService->updateUserTokens($userId, $tokensToAdd, $purchaseData);
+                
+                return response()->json([
+                    'success' => true,
+                    'tokensAdded' => $tokensToAdd,
+                    'previousTotal' => $result['previousTokens'],
+                    'newTotal' => $result['newTotal']
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error updating user tokens: ' . $e->getMessage());
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Failed to update user tokens: ' . $e->getMessage()
+                ], 500);
+            }
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe error verifying session: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Verification error: ' . $e->getMessage()
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Error verifying session: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Verification error'
+            ], 500);
+        }
+    }
+
+    /**
      * Handle Stripe webhook events
      */
     public function handleWebhook(Request $request)

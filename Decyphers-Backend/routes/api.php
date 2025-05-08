@@ -17,6 +17,7 @@ Route::post('/verify-recaptcha', [\App\Http\Controllers\ConfigController::class,
 // Stripe payment routes
 Route::post('/stripe/create-checkout', [StripeController::class, 'createCheckoutSession']);
 Route::get('/stripe/verify-session', [StripeController::class, 'verifySession']);
+Route::post('/stripe/verify-session', [StripeController::class, 'verifySessionPost']);
 Route::post('/stripe/webhook', [StripeController::class, 'handleWebhook']);
 
 // Existing OpenRouter routes
