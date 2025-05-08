@@ -18,10 +18,10 @@ class FirebaseService
 
             $firebase = (new Factory)
                 ->withServiceAccount($serviceAccount)
-                ->withDatabaseUrl($databaseUrl)
-                ->create();
+                ->withDatabaseUri($databaseUrl)
+                ->createDatabase();
 
-            $this->database = $firebase->getDatabase();
+            $this->database = $firebase;
         } catch (\Exception $e) {
             Log::error('Firebase initialization error: ' . $e->getMessage());
             throw $e;
