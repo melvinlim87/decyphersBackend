@@ -515,12 +515,59 @@ class StripeController extends Controller
                     $userId = $session->metadata->userId ?? null;
                     
                     if ($userId) {
-                        // Process the successful payment
-                        // Add tokens to user account, record the transaction, etc.
-                        Log::info('Payment successful for user: ' . $userId);
+                        // Check if this is from our direct verification endpoint
+                        $directVerification = $session->metadata->direct_verification ?? 'false';
                         
-                        // Here you would update your database
-                        // This is just a placeholder
+                        // Only process if this is NOT from our direct verification endpoint
+                        // This prevents double-processing since we already add tokens in verifySessionPost
+                        if ($directVerification !== 'true') {
+                            Log::info('Processing webhook payment for user: ' . $userId);
+                            
+                            // Get line items to determine token amount
+                            try {
+                                $lineItems = \Stripe\Checkout\Session::allLineItems($session->id, ['limit' => 1]);
+                                
+                                if (count($lineItems->data) > 0) {
+                                    $priceId = $lineItems->data[0]->price->id;
+                                    
+                                    // Determine token amount
+                                    $tokensToAdd = self::TOKEN_AMOUNTS[$priceId] ?? 0;
+                                    
+                                    // If direct lookup fails, try partial matching
+                                    if ($tokensToAdd === 0) {
+                                        foreach (self::TOKEN_AMOUNTS as $key => $amount) {
+                                            if (strpos($priceId, $key) !== false) {
+                                                $tokensToAdd = $amount;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if ($tokensToAdd > 0) {
+                                        // Create purchase data
+                                        $purchaseData = [
+                                            'sessionId' => $session->id,
+                                            'priceId' => $priceId,
+                                            'amount' => ($lineItems->data[0]->amount_total ?? 0) / 100,
+                                            'status' => 'paid',
+                                            'customerEmail' => $session->customer_details->email ?? null,
+                                            'currency' => $lineItems->data[0]->currency ?? 'usd',
+                                            'type' => 'purchase' // Explicitly mark as purchase
+                                        ];
+                                        
+                                        // Update Firebase
+                                        $this->firebaseService->updateUserTokens($userId, $tokensToAdd, $purchaseData);
+                                        Log::info("Added {$tokensToAdd} tokens to user {$userId} via webhook");
+                                    } else {
+                                        Log::error("Could not determine token amount for price {$priceId}");
+                                    }
+                                }
+                            } catch (\Exception $e) {
+                                Log::error('Error processing webhook payment: ' . $e->getMessage());
+                            }
+                        } else {
+                            Log::info('Skipping webhook processing for direct verification: ' . $session->id);
+                        }
                     }
                 }
                 break;
