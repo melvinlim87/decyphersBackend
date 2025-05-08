@@ -142,7 +142,8 @@ class StripeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'id' => $session->id
+                'id' => $session->id,
+                'sessionUrl' => $session->url
             ]);
         } catch (ApiErrorException $e) {
             Log::error('Stripe error: ' . $e->getMessage());
