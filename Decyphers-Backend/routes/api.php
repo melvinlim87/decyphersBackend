@@ -13,7 +13,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/firebase-login', [FirebaseAuthController::class, 'login']);
 Route::get('/config/recaptcha', [\App\Http\Controllers\ConfigController::class, 'getReCaptchaSiteKey']);
 Route::get('/config/telegram', [\App\Http\Controllers\ConfigController::class, 'getTelegramConfig']);
-Route::get('/config/telegram', [TelegramController::class, 'getTelegramUsername']);
+Route::get('/config/telegram', [\App\Http\Controllers\ConfigController::class, 'getTelegramUsername']);
 
 Route::post('/verify-recaptcha', [\App\Http\Controllers\ConfigController::class, 'verifyReCaptcha']);
 
