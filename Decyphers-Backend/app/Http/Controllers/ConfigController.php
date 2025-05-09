@@ -81,4 +81,27 @@ class ConfigController extends Controller
             ], 500);
         }
     }
+    
+    /**
+     * Get the Telegram bot ID from the environment
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getTelegramConfig()
+    {
+        $botId = env('TELEGRAM_BOT_ID', '');
+        
+        if (empty($botId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Telegram bot ID is not configured',
+                'bot_id' => null
+            ], 500);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'bot_id' => $botId
+        ]);
+    }
 }
