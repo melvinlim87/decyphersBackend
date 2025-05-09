@@ -104,4 +104,11 @@ class ConfigController extends Controller
             'bot_id' => $botId
         ]);
     }
+
+    public function getTelegramUsername()
+{
+    return response()->json([
+        'bot_id' => env('TELEGRAM_BOT_USERNAME', 'DecyphersAIBot')
+    ]);
+}
 }
