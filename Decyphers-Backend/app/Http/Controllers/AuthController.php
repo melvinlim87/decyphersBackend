@@ -86,15 +86,33 @@ class AuthController extends Controller
             $email = $verifiedIdToken->claims()->get('email');
             $name = $verifiedIdToken->claims()->get('name', $email);
 
-            // Find or create user
-            $user = User::firstOrCreate(
-                ['firebase_uid' => $firebaseUid],
-                [
-                    'email' => $email,
-                    'name' => $name,
-                    'password' => Hash::make(Str::random(32)), // random password
-                ]
-            );
+            // Debug log for Firebase UID and claims
+            \Log::info('Firebase Login Debug', [
+                'firebaseUid' => $firebaseUid,
+                'email' => $email,
+                'claims' => $verifiedIdToken->claims()->all(),
+            ]);
+
+            // First check if user exists by email
+            $existingUser = User::where('email', $email)->first();
+            
+            if ($existingUser && empty($existingUser->firebase_uid)) {
+                // User exists but doesn't have Firebase UID - update it
+                $existingUser->firebase_uid = $firebaseUid;
+                $existingUser->save();
+                $user = $existingUser;
+                \Log::info('Updated existing user with Firebase UID', ['user_id' => $user->id]);
+            } else {
+                // Find or create user by Firebase UID
+                $user = User::firstOrCreate(
+                    ['firebase_uid' => $firebaseUid],
+                    [
+                        'email' => $email,
+                        'name' => $name,
+                        'password' => Hash::make(Str::random(32)), // random password
+                    ]
+                );
+            }
 
             // Issue Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
@@ -105,7 +123,23 @@ class AuthController extends Controller
                 'user' => $user,
             ]);
         } catch (\Throwable $e) {
-            return response()->json(['message' => 'Invalid Firebase token'], 401);
+            // Log the specific error for debugging
+            \Log::error('Firebase auth error in AuthController: ' . $e->getMessage());
+            
+            // Check for specific Firebase errors
+            $errorMessage = $e->getMessage();
+            if (strpos($errorMessage, 'auth/email-already-in-use') !== false) {
+                return response()->json([
+                    'message' => 'This email is already registered. Please try signing in with your password.',
+                    'error' => 'email-already-in-use',
+                    'error_details' => $errorMessage
+                ], 409); // Conflict status code
+            }
+            
+            return response()->json([
+                'message' => 'Authentication failed',
+                'error' => $errorMessage
+            ], 401);
         }
     }
 }

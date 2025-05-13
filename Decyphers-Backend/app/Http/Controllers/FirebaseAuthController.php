@@ -37,15 +37,26 @@ class FirebaseAuthController extends Controller
                 'claims' => $verifiedIdToken->claims()->all(),
             ]);
 
-            // Find or create user
-            $user = User::firstOrCreate(
-                ['firebase_uid' => $firebaseUid],
-                [
-                    'email' => $email,
-                    'name' => $name,
-                    'password' => Hash::make(Str::random(32)), // random password
-                ]
-            );
+            // First check if user exists by email
+            $existingUser = User::where('email', $email)->first();
+            
+            if ($existingUser && empty($existingUser->firebase_uid)) {
+                // User exists but doesn't have Firebase UID - update it
+                $existingUser->firebase_uid = $firebaseUid;
+                $existingUser->save();
+                $user = $existingUser;
+                \Log::info('Updated existing user with Firebase UID', ['user_id' => $user->id]);
+            } else {
+                // Find or create user by Firebase UID
+                $user = User::firstOrCreate(
+                    ['firebase_uid' => $firebaseUid],
+                    [
+                        'email' => $email,
+                        'name' => $name,
+                        'password' => Hash::make(Str::random(32)), // random password
+                    ]
+                );
+            }
 
             // Issue Sanctum token
             $token = $user->createToken('auth_token')->plainTextToken;
@@ -59,9 +70,19 @@ class FirebaseAuthController extends Controller
             // Log the specific error for debugging
             \Log::error('Firebase auth error: ' . $e->getMessage());
             
+            // Check for specific Firebase errors
+            $errorMessage = $e->getMessage();
+            if (strpos($errorMessage, 'auth/email-already-in-use') !== false) {
+                return response()->json([
+                    'message' => 'This email is already registered. Please try signing in with your password.',
+                    'error' => 'email-already-in-use',
+                    'error_details' => $errorMessage
+                ], 409); // Conflict status code
+            }
+            
             return response()->json([
-                'message' => 'Invalid Firebase token',
-                'error' => $e->getMessage()
+                'message' => 'Authentication failed',
+                'error' => $errorMessage
             ], 401);
         }
     }
